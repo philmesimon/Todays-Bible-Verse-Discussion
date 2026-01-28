@@ -113,7 +113,7 @@
         const dateCode = getUSCCBDateCode();
         const targetUrl = `https://bible.usccb.org/bible/readings/${dateCode}.cfm`;
         
-        addMessage('user', `Analyzing readings for: ${new Date().toDateString()}`);
+        addMessage('user', `Analyzing readings for: ${new Date().toDateString()} ${targetUrl}`);
         const loadingDiv = addMessage('model', 'Fetching USCCB data...');
 
         try {
@@ -125,8 +125,8 @@
             tempDiv.innerHTML = htmlContent;
             const plainText = tempDiv.innerText || tempDiv.textContent;
 
-            const r1Match = plainText.match(/Reading I\s+([\w\s\d,:-]+)/i);
-            const r2Match = plainText.match(/Reading II\s+([\w\s\d,:-]+)/i);
+            const r1Match = plainText.match(/Reading 1\s+([\w\s\d,:-]+)/i);
+            const r2Match = plainText.match(/Reading 2\s+([\w\s\d,:-]+)/i);
             const gospelMatch = plainText.match(/Gospel\s+([\w\s\d,:-]+)/i);
 
             const r1 = r1Match ? r1Match[1].trim().split('\n')[0] : "Check Link";
