@@ -11,30 +11,64 @@
 
     <style>
         :root { --bg: #fdf6e3; --header: #5d4037; --text: #3e2723; --accent: #8d6e63; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--bg); color: var(--text); }
-        header { background: var(--header); color: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
-        .toolbar { background: #efebe9; padding: 10px; display: flex; gap: 8px; overflow-x: auto; border-bottom: 1px solid #d7ccc8; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+        
+        /* Hamburger Menu Styles */
+        #menuToggle { display: none; }
+        .menu-btn { font-size: 24px; cursor: pointer; padding: 10px; color: white; }
+        .side-menu { position: fixed; top: 0; left: -300px; width: 280px; height: 100%; background: #fff; box-shadow: 2px 0 5px rgba(0,0,0,0.2); transition: 0.3s; z-index: 1000; padding: 20px; overflow-y: auto; color: #333; }
+        #menuToggle:checked ~ .side-menu { left: 0; }
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 999; }
+        #menuToggle:checked ~ .overlay { display: block; }
+
+        header { background: var(--header); color: #fff; padding: 5px 15px; display: flex; align-items: center; gap: 15px; }
+        .toolbar { background: #efebe9; padding: 10px; display: flex; gap: 8px; border-bottom: 1px solid #d7ccc8; }
+        
         #chat-window { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 15px; }
         .msg { max-width: 90%; padding: 12px 16px; border-radius: 12px; line-height: 1.6; font-size: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .user { align-self: flex-end; background: #d7ccc8; }
         .model { align-self: flex-start; background: #fff; border: 1px solid #d7ccc8; }
+        
         .input-bar { padding: 12px; background: #fff; border-top: 1px solid #d7ccc8; display: flex; gap: 8px; }
-        input[type="text"] { flex: 1; padding: 12px; border: 1px solid #bcaaa4; border-radius: 8px; outline: none; }
+        input[type="text"], input[type="password"] { flex: 1; padding: 10px; border: 1px solid #bcaaa4; border-radius: 8px; }
+        
         button { padding: 10px 14px; border: none; border-radius: 6px; cursor: pointer; background: var(--accent); color: white; font-weight: bold; }
         .btn-study { background: #388e3c; }
-        .debug-info { font-size: 13px; color: #5d4037; background: #f5f5f5; padding: 10px; border-radius: 6px; border-left: 4px solid #388e3c; margin-bottom: 10px; line-height: 1.4; }
+        .instruction-box { font-size: 13px; background: #f9f9f9; padding: 10px; border-radius: 5px; border: 1px solid #ddd; margin-top: 15px; }
+        .disclaimer { font-size: 10px; color: #777; margin-top: 20px; line-height: 1.2; }
     </style>
 </head>
 <body>
 
 <header>
+    <label for="menuToggle" class="menu-btn">☰</label>
     <strong>Catholic Bible Agent</strong>
-    <input type="password" id="apiKey" placeholder="API Key" style="width: 110px; padding: 5px; font-size: 11px; border:none; border-radius: 4px;">
 </header>
 
+<input type="checkbox" id="menuToggle">
+<div class="overlay" onclick="document.getElementById('menuToggle').checked = false"></div>
+
+<div class="side-menu">
+    <h3>Settings</h3>
+    <p style="font-size: 14px;">Enter your Gemini API Key:</p>
+    <input type="password" id="apiKey" placeholder="Paste Key Here" style="width: 100%; margin-bottom: 10px;">
+    <button onclick="saveKey()" style="width: 100%;">💾 Save Key</button>
+    
+    <div class="instruction-box">
+        <strong>How to get a Key:</strong><br>
+        1. Go to <a href="https://aistudio.google.com/app/api-keys" target="_blank">AI Studio</a><br>
+        2. Click <b>Get API key</b><br>
+        3. <b>Create API key</b> -> Name it -> Select "Gemini API" -> <b>Create Key</b><br>
+        4. Copy and paste it above.
+    </div>
+
+    <div class="disclaimer">
+        <strong>MIT License Notice:</strong> Provided "as-is" without warranty. Your API key and chat history are stored <b>only</b> in your browser's local storage. This app does not collect user data.
+    </div>
+</div>
+
 <div class="toolbar">
-    <button class="btn-study" onclick="runUSCCBStudy()">📖 Daily Study (USCCB)</button>
-    <button onclick="saveKey()">🔑 Save Key</button>
+    <button class="btn-study" onclick="runUSCCBStudy()">📖 Today's Study (USCCB)</button>
     <button onclick="clearChat()" style="background:#a93226">🗑️ Clear</button>
 </div>
 
@@ -57,7 +91,8 @@
 
     window.saveKey = () => {
         localStorage.setItem('gemini_api_key', document.getElementById('apiKey').value);
-        alert("API Key Saved.");
+        alert("API Key Saved Successfully.");
+        document.getElementById('menuToggle').checked = false;
     };
 
     function getUSCCBDateCode() {
@@ -70,71 +105,46 @@
 
     window.runUSCCBStudy = async () => {
         const key = document.getElementById('apiKey').value;
-        if (!key) return alert("Please enter API Key");
+        if (!key) {
+            alert("Please open the menu (☰) and enter your API Key first.");
+            return;
+        }
 
         const dateCode = getUSCCBDateCode();
         const targetUrl = `https://bible.usccb.org/bible/readings/${dateCode}.cfm`;
         
-        addMessage('user', `Bible Study for ${new Date().toDateString()}`);
-        const loadingDiv = addMessage('model', 'Fetching USCCB website data...');
+        addMessage('user', `Analyzing readings for: ${new Date().toDateString()}`);
+        const loadingDiv = addMessage('model', 'Fetching USCCB data...');
 
         try {
-            // Fetch via Proxy to bypass CORS
             const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
             const data = await response.json();
             const htmlContent = data.contents;
 
-            if (!htmlContent) throw new Error("Could not reach USCCB. Please check your internet.");
-
-            // 1. Convert HTML to clean text using the browser's DOM parser
             const tempDiv = document.createElement("div");
             tempDiv.innerHTML = htmlContent;
             const plainText = tempDiv.innerText || tempDiv.textContent;
 
-            // 2. JavaScript String Search (Regex) for Reading 1, 2, and Gospel
-            // Looks for headers and captures the citation on the same line
-            const r1Match = plainText.match(/Reading 1\s+([\w\s\d,:-]+)/i);
-            const r2Match = plainText.match(/Reading 2\s+([\w\s\d,:-]+)/i);
+            const r1Match = plainText.match(/Reading I\s+([\w\s\d,:-]+)/i);
+            const r2Match = plainText.match(/Reading II\s+([\w\s\d,:-]+)/i);
             const gospelMatch = plainText.match(/Gospel\s+([\w\s\d,:-]+)/i);
 
-            const r1 = r1Match ? r1Match[1].trim().split('\n')[0] : "Not Found";
-            const r2 = r2Match ? r2Match[1].trim().split('\n')[0] : "Not Found";
-            const gospel = gospelMatch ? gospelMatch[1].trim().split('\n')[0] : "Not Found";
+            const r1 = r1Match ? r1Match[1].trim().split('\n')[0] : "Check Link";
+            const r2 = r2Match ? r2Match[1].trim().split('\n')[0] : "N/A";
+            const gospel = gospelMatch ? gospelMatch[1].trim().split('\n')[0] : "Check Link";
 
             const detectedVerses = `Reading 1: ${r1}, Reading 2: ${r2}, Gospel: ${gospel}`;
 
-            // Update UI with detected data
-            loadingDiv.innerHTML = `
-                <div class="debug-info">
-                    <strong>Source:</strong> <a href="${targetUrl}" target="_blank">${targetUrl}</a><br>
-                    <strong>Verses Detected:</strong><br>
-                    • ${r1 !== "Not Found" ? r1 : "Reading 1 missing"}<br>
-                    • ${r2 !== "Not Found" ? r2 : "Reading 2 missing"}<br>
-                    • ${gospel !== "Not Found" ? gospel : "Gospel missing"}
-                </div>
-                Generating Malayalam analysis...
-            `;
-
-            // 3. Request analysis from Gemini-Flash-Latest
             const genAI = new GoogleGenerativeAI(key);
-            const model = genAI.getGenerativeModel({ 
-                model: "gemini-flash-latest", 
-                systemInstruction: bibleSystemPrompt 
-            });
+            const model = genAI.getGenerativeModel({ model: "gemini-flash-latest", systemInstruction: bibleSystemPrompt });
 
-            const studyPrompt = `
-                Find out possible critical questions for the following Bible readings: ${detectedVerses}.
-                Provide detailed answers for them in Malayalam. 
-                Base your answers on the Bible and the Catechism of the Catholic Church.
-            `;
-
-            const finalResult = await model.generateContent(studyPrompt);
-            const studyText = finalResult.response.text();
-
-            loadingDiv.innerHTML += marked.parse(`\n---\n${studyText}`);
+            const studyPrompt = `Generate critical questions and detailed answers in Malayalam for these readings: ${detectedVerses}. Use Bible and Catechism.`;
+            const result = await model.generateContent(studyPrompt);
+            
+            loadingDiv.innerHTML = marked.parse(`**Verses Detected:** ${detectedVerses}\n\n---\n${result.response.text()}`);
 
         } catch (e) {
-            loadingDiv.innerHTML = `<span style="color:red">Error: ${e.message}</span>`;
+            loadingDiv.innerHTML = `Error: ${e.message}`;
         }
     };
 
@@ -147,15 +157,10 @@
         const loadingDiv = addMessage('model', '...');
         try {
             const genAI = new GoogleGenerativeAI(key);
-            const model = genAI.getGenerativeModel({ 
-                model: "gemini-flash-latest", 
-                systemInstruction: bibleSystemPrompt 
-            });
+            const model = genAI.getGenerativeModel({ model: "gemini-flash-latest", systemInstruction: bibleSystemPrompt });
             const result = await model.generateContent(text);
             loadingDiv.innerHTML = marked.parse(result.response.text());
-        } catch (e) {
-            loadingDiv.innerText = "Error: " + e.message;
-        }
+        } catch (e) { loadingDiv.innerText = "Error: " + e.message; }
     };
 
     function addMessage(role, text) {
@@ -168,8 +173,7 @@
         return div;
     }
 
-    window.clearChat = () => { document.getElementById('chat-window').innerHTML = ''; };
+    window.clearChat = () => { if(confirm("Clear chat?")) document.getElementById('chat-window').innerHTML = ''; };
 </script>
-
 </body>
 </html>
