@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ter another <!DOCTYPE html>
 <html lang="ml">
 <head>
     <meta charset="UTF-8">
@@ -187,7 +187,7 @@
             });
 
             // Analysis Prompt
-            const studyPrompt = `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verseSummary}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section`;
+            const studyPrompt = `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verseSummary}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section one below another all in a single column`;
             const result = await model.generateContent(studyPrompt);
             
             loadingDiv.innerHTML = marked.parse(`### Verses Found:\n${verseSummary.replace(/\n/g, '<br>')}\n\n---\n${result.response.text()}`);
@@ -230,3 +230,4 @@
 </script>
 </body>
 </html>
+
