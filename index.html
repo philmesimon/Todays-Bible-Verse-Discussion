@@ -13,7 +13,7 @@
         :root { --bg: #fdf6e3; --header: #5d4037; --text: #3e2723; --accent: #8d6e63; }
         body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
         
-        /* Hamburger Menu Styles */
+        /* Sidebar/Hamburger Menu Styles */
         #menuToggle { display: none; }
         .menu-btn { font-size: 24px; cursor: pointer; padding: 10px; color: white; }
         .side-menu { position: fixed; top: 0; left: -300px; width: 280px; height: 100%; background: #fff; box-shadow: 2px 0 5px rgba(0,0,0,0.2); transition: 0.3s; z-index: 1000; padding: 20px; overflow-y: auto; color: #333; }
@@ -50,7 +50,7 @@
 
 <div class="side-menu">
     <h3>Settings</h3>
-    <p style="font-size: 14px;">Enter your Gemini API Key:</p>
+    <p style="font-size: 14px;">Enter Gemini API Key:</p>
     <input type="password" id="apiKey" placeholder="Paste Key Here" style="width: 100%; margin-bottom: 10px;">
     <button onclick="saveKey()" style="width: 100%;">💾 Save Key</button>
     
@@ -75,26 +75,50 @@
 <div id="chat-window"></div>
 
 <div class="input-bar">
-    <input type="text" id="userInput" placeholder="Ask about Bible/Catechism..." onkeypress="if(event.key==='Enter') sendMessage()">
+    <input type="text" id="userInput" placeholder="Ask about Bible..." onkeypress="if(event.key==='Enter') sendMessage()">
     <button onclick="sendMessage()" style="background:#1a73e8">Ask</button>
 </div>
 
 <script type="module">
     import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 
-    const bibleSystemPrompt = "You are an expert in bible and cathechism of catholic church. You will answer your questions based on these books, quoting verses from them when required.";
+    const bibleSystemPrompt = "You are an expert in bible and cathechism of catholic church. Answer based on these books, quoting verses, in Malayalam.";
 
+    // Load saved API Key from LocalStorage on startup
     window.onload = () => {
         const savedKey = localStorage.getItem('gemini_api_key');
         if (savedKey) document.getElementById('apiKey').value = savedKey;
     };
 
+    // Save API Key to LocalStorage
     window.saveKey = () => {
         localStorage.setItem('gemini_api_key', document.getElementById('apiKey').value);
         alert("API Key Saved Successfully.");
         document.getElementById('menuToggle').checked = false;
     };
 
+    /**
+     * Modular function to find verses in plain text.
+     * Updated Regex:
+     * - [^\\n]+ captures EVERYTHING on the line after the keyword.
+     * - This ensures "Zephaniah 2:3; 3:12-13" is captured in full.
+     */
+    function extractReading(text, type) {
+        // Regex logic: Matches "Reading 1" or "Reading 2" or "Gospel" with any number of spaces
+        // \s+ handles deterministic/non-deterministic spacing
+        //const pattern = new RegExp(`${type}\\s+([\\w\\s\\d,:-]+)`, "i");
+        const pattern = new RegExp(`${type}\\s+([^\\n]+)`, "i");
+        const match = text.match(pattern);
+        
+        if (match && match[1]) {
+            // Trim and take only the first line of the match (to avoid bleeding into other content)
+            //return match[1].split('\n')[0].trim();
+            return match[1].trim();
+        }
+        return null;
+    }
+
+    // Generates the MMDDYY code for USCCB URL
     function getUSCCBDateCode() {
         const d = new Date();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -103,51 +127,79 @@
         return `${mm}${dd}${yy}`;
     }
 
+    /**
+     * Main Orchestrator for Daily Study
+     */
     window.runUSCCBStudy = async () => {
         const key = document.getElementById('apiKey').value;
-        if (!key) {
-            alert("Please open the menu (☰) and enter your API Key first.");
-            return;
-        }
+        if (!key) return alert("Please set API Key in settings menu (☰).");
 
-        const dateCode = getUSCCBDateCode();
-        const targetUrl = `https://bible.usccb.org/bible/readings/${dateCode}.cfm`;
-        
+        const targetUrl = `https://bible.usccb.org/bible/readings/${getUSCCBDateCode()}.cfm`;
+        //addMessage('user', `Analyzing USCCB Daily Readings...`);
         addMessage('user', `Analyzing readings for: ${new Date().toDateString()} ${targetUrl}`);
-        const loadingDiv = addMessage('model', 'Fetching USCCB data...');
+        const loadingDiv = addMessage('model', 'Fetching data...');
 
         try {
+            // Bypass CORS using proxy
             const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
             const data = await response.json();
-            const htmlContent = data.contents;
 
+            // Check if content was actually retrieved
+            if (data.contents) {
+                // 1. Log to console for your own debugging
+                console.log("Successfully retrieved USCCB data. Length:", data.contents.length);
+                
+                // 2. Update the UI message for the user
+                loadingDiv.innerHTML = "✅ Data received! Parsing readings..."; 
+            } else {
+                throw new Error("Target site returned empty data.");
+            }
+            
+            // Convert HTML to text for cleaner parsing
             const tempDiv = document.createElement("div");
-            tempDiv.innerHTML = htmlContent;
+            tempDiv.innerHTML = data.contents;
             const plainText = tempDiv.innerText || tempDiv.textContent;
+            
+            // DEBUG: Print the converted text so you can see what the Regex is searching through
+            // We use a scrollable div to keep it tidy
+            
+            loadingDiv.innerHTML = `
+                <div style="font-size: 11px; background: #eee; padding: 10px; border-radius: 5px; max-height: 150px; overflow-y: auto; margin-bottom: 10px;">
+                    <strong>Cleaned Text Preview:</strong><br>
+                    <pre>${plainText.substring(0, 2000)}...</pre>
+                </div>
+                🔍 Searching for verses in the text above...
+            `;
+            
 
-            const r1Match = plainText.match(/Reading 1\s+([\w\s\d,:-]+)/i);
-            const r2Match = plainText.match(/Reading 2\s+([\w\s\d,:-]+)/i);
-            const gospelMatch = plainText.match(/Gospel\s+([\w\s\d,:-]+)/i);
+            // Modularly extract each reading
+            const r1 = extractReading(plainText, "Reading 1") || "Not found";
+            const r2 = extractReading(plainText, "Reading 2") || "None (Weekday)";
+            const gospel = extractReading(plainText, "Gospel") || "Not found";
 
-            const r1 = r1Match ? r1Match[1].trim().split('\n')[0] : "Check Link";
-            const r2 = r2Match ? r2Match[1].trim().split('\n')[0] : "N/A";
-            const gospel = gospelMatch ? gospelMatch[1].trim().split('\n')[0] : "Check Link";
+            const verseSummary = `Reading 1: ${r1}\nReading 2: ${r2}\nGospel: ${gospel}`;
 
-            const detectedVerses = `Reading 1: ${r1}, Reading 2: ${r2}, Gospel: ${gospel}`;
-
+            // Initialize Gemini
             const genAI = new GoogleGenerativeAI(key);
-            const model = genAI.getGenerativeModel({ model: "gemini-flash-latest", systemInstruction: bibleSystemPrompt });
+            const model = genAI.getGenerativeModel({ 
+                model: "gemini-flash-latest", 
+                systemInstruction: bibleSystemPrompt 
+            });
 
-            const studyPrompt = `Generate critical questions and detailed answers in Malayalam for these readings: ${detectedVerses}. Use Bible and Catechism.`;
+            // Analysis Prompt
+            const studyPrompt = `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verseSummary}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section`;
             const result = await model.generateContent(studyPrompt);
             
-            loadingDiv.innerHTML = marked.parse(`**Verses Detected:** ${detectedVerses}\n\n---\n${result.response.text()}`);
+            loadingDiv.innerHTML = marked.parse(`### Verses Found:\n${verseSummary.replace(/\n/g, '<br>')}\n\n---\n${result.response.text()}`);
 
         } catch (e) {
-            loadingDiv.innerHTML = `Error: ${e.message}`;
+            loadingDiv.innerHTML = `<span style="color:red">Error: ${e.message}</span>`;
         }
     };
 
+    /**
+     * Standard Chat Functionality
+     */
     window.sendMessage = async () => {
         const key = document.getElementById('apiKey').value;
         const text = document.getElementById('userInput').value.trim();
@@ -163,6 +215,7 @@
         } catch (e) { loadingDiv.innerText = "Error: " + e.message; }
     };
 
+    // Helper to add messages to the UI
     function addMessage(role, text) {
         const win = document.getElementById('chat-window');
         const div = document.createElement('div');
@@ -173,7 +226,7 @@
         return div;
     }
 
-    window.clearChat = () => { if(confirm("Clear chat?")) document.getElementById('chat-window').innerHTML = ''; };
+    window.clearChat = () => { if(confirm("Clear history?")) document.getElementById('chat-window').innerHTML = ''; };
 </script>
 </body>
 </html>
