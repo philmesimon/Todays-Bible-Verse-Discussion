@@ -1,4 +1,4 @@
-ter another <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ml">
 <head>
     <meta charset="UTF-8">
@@ -98,24 +98,26 @@ ter another <!DOCTYPE html>
     };
 
     /**
-     * Modular function to find verses in plain text.
-     * Updated Regex:
-     * - [^\\n]+ captures EVERYTHING on the line after the keyword.
-     * - This ensures "Zephaniah 2:3; 3:12-13" is captured in full.
-     */
+    * MODULAR SEARCH FUNCTION (Fixed)
+    * Uses (?:...) non-capturing groups so that match[1] always 
+    * points to the verse string, regardless of the numeral type.
+    */
     function extractReading(text, type) {
-        // Regex logic: Matches "Reading 1" or "Reading 2" or "Gospel" with any number of spaces
-        // \s+ handles deterministic/non-deterministic spacing
-        //const pattern = new RegExp(`${type}\\s+([\\w\\s\\d,:-]+)`, "i");
-        const pattern = new RegExp(`${type}\\s+([^\\n]+)`, "i");
+        let pattern;
+        
+        if (type === "Reading 1") {
+            // (?:1|I) matches 1 or I but does not "capture" it as a separate result
+            pattern = new RegExp(`Reading\\s+(?:1|I)\\s+([^\\n\\r]+)`, "i");
+        } else if (type === "Reading 2") {
+            pattern = new RegExp(`Reading\\s+(?:2|II)\\s+([^\\n\\r]+)`, "i");
+        } else {
+            pattern = new RegExp(`${type}\\s+([^\\n\\r]+)`, "i");
+        }
+        
         const match = text.match(pattern);
         
-        if (match && match[1]) {
-            // Trim and take only the first line of the match (to avoid bleeding into other content)
-            //return match[1].split('\n')[0].trim();
-            return match[1].trim();
-        }
-        return null;
+        // With non-capturing groups, the verse is always in match[1]
+        return match ? match[1].trim() : null;
     }
 
     // Generates the MMDDYY code for USCCB URL
@@ -187,7 +189,7 @@ ter another <!DOCTYPE html>
             });
 
             // Analysis Prompt
-            const studyPrompt = `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verseSummary}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section one below another all in a single column`;
+            const studyPrompt = `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verseSummary}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section`;
             const result = await model.generateContent(studyPrompt);
             
             loadingDiv.innerHTML = marked.parse(`### Verses Found:\n${verseSummary.replace(/\n/g, '<br>')}\n\n---\n${result.response.text()}`);
@@ -230,4 +232,3 @@ ter another <!DOCTYPE html>
 </script>
 </body>
 </html>
-
