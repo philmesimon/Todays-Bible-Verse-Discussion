@@ -35,6 +35,8 @@
         .btn-study { background: #388e3c; }
         .btn-manual { background: #1a73e8; width: 100%; }
         .instruction-box { font-size: 13px; background: #f9f9f9; padding: 10px; border-radius: 5px; border: 1px solid #ddd; margin-top: 15px; }
+        .save-load-area { background: #f0f4f8; padding: 10px; border-radius: 8px; margin-top: 10px; }
+        .history-item { display: flex; justify-content: space-between; align-items: center; padding: 5px; border-bottom: 1px solid #ddd; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -50,118 +52,112 @@
 <div class="side-menu">
     <h3>Settings</h3>
     <input type="password" id="apiKey" placeholder="Gemini API Key">
-    <button onclick="saveKey()" style="width: 100%; margin-bottom: 20px;">💾 Save Key</button>
+    <button onclick="saveKey()" style="width: 100%; margin-bottom: 10px;">💾 Save Key</button>
     
+    <div class="save-load-area">
+        <h4>Archive Session</h4>
+        <input type="text" id="saveName" placeholder="Session Name (e.g. Lent Day 1)">
+        <button onclick="saveSession()" style="width: 100%; background: #5d4037;">📂 Save Current Chat</button>
+        <div id="savedList" style="margin-top:10px;"></div>
+    </div>
+
     <hr>
     <h3>Manual Verse Entry</h3>
-    <p style="font-size: 12px;">If automatic fetch fails, type verses here (e.g., John 3:16; Psalm 23):</p>
-    <textarea id="manualVerses" rows="3" placeholder="Enter verses manually..."></textarea>
+    <textarea id="manualVerses" rows="2" placeholder="Enter verses manually..."></textarea>
     <button class="btn-manual" onclick="runManualStudy()">📖 Analyze Manual Verses</button>
-
-    <div class="instruction-box">
-        <strong>How to get a Key:</strong><br>
-        1. Go to <a href="https://aistudio.google.com/app/api-keys" target="_blank">AI Studio</a><br>
-        2. Click <b>Get API key</b><br>
-        3. <b>Create API key</b> -> Name it -> Select "Gemini API" -> <b>Create Key</b><br>
-        4. Copy and paste it above.
-    </div>
 </div>
 
 <div class="toolbar">
-    <button class="btn-study" onclick="runUSCCBStudy()">📖 Today's Study (USCCB)</button>
-    <button onclick="clearChat()" style="background:#a93226">🗑️ Clear</button>
+    <button class="btn-study" onclick="runUSCCBStudy()">📖 Today's Study</button>
+    <button onclick="clearChat()" style="background:#a93226">🗑️ Clear Session</button>
 </div>
 
 <div id="chat-window"></div>
 
 <div class="input-bar">
-    <input type="text" id="userInput" placeholder="Ask about Bible..." onkeypress="if(event.key==='Enter') sendMessage()">
+    <input type="text" id="userInput" placeholder="Ask follow-up questions..." onkeypress="if(event.key==='Enter') sendMessage()">
     <button onclick="sendMessage()" style="background:#1a73e8">Ask</button>
 </div>
 
 <script type="module">
     import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 
-    const bibleSystemPrompt = "You are an expert in bible and cathechism of catholic church. Answer questions based on these books, quoting verses, in Malayalam.";
+    const bibleSystemPrompt = "You are an expert in bible and cathechism of catholic church. Answer questions based on these books, quoting verses, in Malayalam. Maintain context of previous verses discussed.";
+
+    // Session State
+    let currentHistory = []; // Array of {role: "user"|"model", parts: [{text: ""}]}
 
     window.onload = () => {
-        const saved = localStorage.getItem('gemini_api_key');
-        if (saved) {
-            try {
-                // atob (ASCII to Binary) decodes the scramble
-                document.getElementById('apiKey').value = atob(saved);
-            } catch (e) {
-                // Fallback: if it was saved before scrambling was added
-                document.getElementById('apiKey').value = saved;
-            }
+        const savedKey = localStorage.getItem('gemini_api_key');
+        if (savedKey) {
+            try { document.getElementById('apiKey').value = atob(savedKey); } 
+            catch (e) { document.getElementById('apiKey').value = savedKey; }
         }
+        updateSavedList();
     };
 
     window.saveKey = () => {
         const rawKey = document.getElementById('apiKey').value;
-        if (!rawKey) return alert("Please enter a key.");
-        
-        // btoa (Binary to ASCII) turns the key into a Base64 string
-        const scrambledKey = btoa(rawKey); 
-        
-        localStorage.setItem('gemini_api_key', scrambledKey);
-        alert("Key saved and scrambled successfully.");
-        document.getElementById('menuToggle').checked = false;
+        if (rawKey) {
+            localStorage.setItem('gemini_api_key', btoa(rawKey));
+            alert("Key Saved.");
+        }
     };
 
     function extractReading(text, type) {
-        let pattern;
-        if (type === "Reading 1") pattern = new RegExp(`Reading\\s+(?:1|I)\\s+([^\\n\\r]+)`, "i");
-        else if (type === "Reading 2") pattern = new RegExp(`Reading\\s+(?:2|II)\\s+([^\\n\\r]+)`, "i");
-        else pattern = new RegExp(`${type}\\s+([^\\n\\r]+)`, "i");
+        let pattern = (type === "Reading 1") ? /Reading\s+(?:1|I)\s+([^\n\r]+)/i :
+                      (type === "Reading 2") ? /Reading\s+(?:2|II)\s+([^\n\r]+)/i :
+                      new RegExp(`${type}\\s+([^\\n\\r]+)`, "i");
         const match = text.match(pattern);
         return match ? match[1].trim() : null;
     }
 
-    // Helper to call Gemini for study
-    async function performAnalysis(key, verses, loadingDiv) {
+    // New Session-Aware Analysis
+    async function performAnalysis(key, promptText, loadingDiv) {
         try {
             const genAI = new GoogleGenerativeAI(key);
             const model = genAI.getGenerativeModel({ model: "gemini-flash-latest", systemInstruction: bibleSystemPrompt });
-            const prompt = `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verses}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section.`;
-            const result = await model.generateContent(prompt);
-            loadingDiv.innerHTML = marked.parse(`### Analysis for:\n${verses.replace(/\n/g, '<br>')}\n\n---\n${result.response.text()}`);
+            
+            // Start chat with current history
+            const chat = model.startChat({ history: currentHistory });
+            
+            const result = await chat.sendMessage(promptText);
+            const responseText = result.response.text();
+
+            // Update local history
+            currentHistory.push({ role: "user", parts: [{ text: promptText }] });
+            currentHistory.push({ role: "model", parts: [{ text: responseText }] });
+
+            loadingDiv.innerHTML = marked.parse(responseText);
         } catch (e) {
-            loadingDiv.innerHTML = `<span style="color:red">Gemini Error: ${e.message}</span>`;
+            loadingDiv.innerHTML = `<span style="color:red">Error: ${e.message}</span>`;
         }
     }
 
-    // Manual Study Entry Logic
     window.runManualStudy = async () => {
         const key = document.getElementById('apiKey').value;
         const verses = document.getElementById('manualVerses').value.trim();
-        if (!key) return alert("Please set API Key.");
-        if (!verses) return alert("Please enter some verses.");
-
-        document.getElementById('menuToggle').checked = false;
-        addMessage('user', `Manual Study: ${verses}`);
-        const loadingDiv = addMessage('model', 'Analyzing manual verses...');
-        await performAnalysis(key, verses, loadingDiv);
+        if (!key || !verses) return alert("Key or Verses missing.");
+        
+        addMessage('user', `Analyzing: ${verses}`);
+        const loadingDiv = addMessage('model', 'Thinking...');
+        await performAnalysis(key, `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verses}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section.`, loadingDiv);
     };
 
-    // Automatic Fetch Logic
     window.runUSCCBStudy = async () => {
+        // reset the current context for todays verses ---
+        currentHistory = []; // Wipes the LLM context
+        document.getElementById('chat-window').innerHTML = ''; // Clears the screen
+        // ---------------------------
         const key = document.getElementById('apiKey').value;
-        if (!key) return alert("Please set API Key.");
-
         const date = new Date();
         const dateCode = String(date.getMonth() + 1).padStart(2, '0') + String(date.getDate()).padStart(2, '0') + String(date.getFullYear()).slice(-2);
         const targetUrl = `https://bible.usccb.org/bible/readings/${dateCode}.cfm`;
         
-        addMessage('user', `Auto-fetching: ${date.toDateString()}`);
-        const loadingDiv = addMessage('model', 'Connecting to USCCB...');
-
+        const loadingDiv = addMessage('model', 'Fetching USCCB...');
         try {
-            const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
-            const data = await response.json();
-            
-            if (!data.contents) throw new Error("Proxy error.");
-
+            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
+            const data = await res.json();
             const tempDiv = document.createElement("div");
             tempDiv.innerHTML = data.contents;
             const plainText = tempDiv.innerText || tempDiv.textContent;
@@ -169,41 +165,85 @@
             const r1 = extractReading(plainText, "Reading 1") || "Not found";
             const r2 = extractReading(plainText, "Reading 2") || "None";
             const gospel = extractReading(plainText, "Gospel") || "Not found";
-            const verses = `Reading 1: ${r1}\nReading 2: ${r2}\nGospel: ${gospel}`;
+            const verses = `Reading 1: ${r1}, Reading 2: ${r2}, Gospel: ${gospel}`;
 
-            await performAnalysis(key, verses, loadingDiv);
-
-        } catch (e) {
-            loadingDiv.innerHTML = `<span style="color:red">Fetch failed. 
-            <br>1. Please check: <a href="${targetUrl}" target="_blank">USCCB Today's Reading</a>
-            <br>2. Copy verses and paste in "Manual Verse Entry" in settings (☰).</span>`;
-        }
+            await performAnalysis(key, `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verses}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section.`, loadingDiv);
+        } catch (e) { loadingDiv.innerText = "Fetch failed."; }
     };
 
     window.sendMessage = async () => {
         const key = document.getElementById('apiKey').value;
         const text = document.getElementById('userInput').value.trim();
         if (!key || !text) return;
+
         addMessage('user', text);
+        document.getElementById('userInput').value = "";
         const loadingDiv = addMessage('model', '...');
-        try {
-            const genAI = new GoogleGenerativeAI(key);
-            const model = genAI.getGenerativeModel({ model: "gemini-flash-latest", systemInstruction: bibleSystemPrompt });
-            const result = await model.generateContent(text);
-            loadingDiv.innerHTML = marked.parse(result.response.text());
-        } catch (e) { loadingDiv.innerText = "Error: " + e.message; }
+        await performAnalysis(key, text, loadingDiv);
     };
 
     function addMessage(role, text) {
         const win = document.getElementById('chat-window');
         const div = document.createElement('div');
         div.className = `msg ${role}`;
-        div.innerHTML = role === 'user' ? text : marked.parse(text);
+        div.innerHTML = marked.parse(text);
         win.appendChild(div);
         win.scrollTop = win.scrollHeight;
         return div;
     }
-    window.clearChat = () => { if(confirm("Clear history?")) document.getElementById('chat-window').innerHTML = ''; };
+
+    window.clearChat = () => {
+        if(confirm("Wipe current session context?")) {
+            currentHistory = [];
+            document.getElementById('chat-window').innerHTML = '';
+        }
+    };
+
+    // SAVE/RESTORE LOGIC
+    window.saveSession = () => {
+        const name = document.getElementById('saveName').value.trim();
+        if (!name || currentHistory.length === 0) return alert("Enter a name and ensure chat isn't empty.");
+        
+        const sessions = JSON.parse(localStorage.getItem('bible_sessions') || "{}");
+        sessions[name] = currentHistory;
+        localStorage.setItem('bible_sessions', JSON.stringify(sessions));
+        
+        alert("Session saved!");
+        updateSavedList();
+    };
+
+    function updateSavedList() {
+        const sessions = JSON.parse(localStorage.getItem('bible_sessions') || "{}");
+        const list = document.getElementById('savedList');
+        list.innerHTML = "";
+        Object.keys(sessions).forEach(name => {
+            const div = document.createElement('div');
+            div.className = "history-item";
+            div.innerHTML = `<span>${name}</span> 
+                <div>
+                    <button onclick="loadSession('${name}')" style="background:#388e3c; padding:4px 8px; font-size:10px;">Load</button>
+                    <button onclick="deleteSession('${name}')" style="background:#a93226; padding:4px 8px; font-size:10px;">X</button>
+                </div>`;
+            list.appendChild(div);
+        });
+    }
+
+    window.loadSession = (name) => {
+        const sessions = JSON.parse(localStorage.getItem('bible_sessions') || "{}");
+        currentHistory = sessions[name];
+        document.getElementById('chat-window').innerHTML = "";
+        currentHistory.forEach(msg => {
+            addMessage(msg.role === "user" ? "user" : "model", msg.parts[0].text);
+        });
+        document.getElementById('menuToggle').checked = false;
+    };
+
+    window.deleteSession = (name) => {
+        const sessions = JSON.parse(localStorage.getItem('bible_sessions') || "{}");
+        delete sessions[name];
+        localStorage.setItem('bible_sessions', JSON.stringify(sessions));
+        updateSavedList();
+    };
 </script>
 </body>
 </html>
