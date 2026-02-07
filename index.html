@@ -85,13 +85,27 @@
     const bibleSystemPrompt = "You are an expert in bible and cathechism of catholic church. Answer questions based on these books, quoting verses, in Malayalam.";
 
     window.onload = () => {
-        const savedKey = localStorage.getItem('gemini_api_key');
-        if (savedKey) document.getElementById('apiKey').value = savedKey;
+        const saved = localStorage.getItem('gemini_api_key');
+        if (saved) {
+            try {
+                // atob (ASCII to Binary) decodes the scramble
+                document.getElementById('apiKey').value = atob(saved);
+            } catch (e) {
+                // Fallback: if it was saved before scrambling was added
+                document.getElementById('apiKey').value = saved;
+            }
+        }
     };
 
     window.saveKey = () => {
-        localStorage.setItem('gemini_api_key', document.getElementById('apiKey').value);
-        alert("API Key Saved.");
+        const rawKey = document.getElementById('apiKey').value;
+        if (!rawKey) return alert("Please enter a key.");
+        
+        // btoa (Binary to ASCII) turns the key into a Base64 string
+        const scrambledKey = btoa(rawKey); 
+        
+        localStorage.setItem('gemini_api_key', scrambledKey);
+        alert("Key saved and scrambled successfully.");
         document.getElementById('menuToggle').checked = false;
     };
 
