@@ -188,59 +188,32 @@
     };
 
     window.runUSCCBStudy = async () => {
-        // Reset the current context for today's verses
+        // reset the current context for todays verses ---
         currentHistory = []; // Wipes the LLM context
         document.getElementById('chat-window').innerHTML = ''; // Clears the screen
-
+        // ---------------------------
         const key = document.getElementById('apiKey').value;
+        const date = new Date();
+        const dateCode = String(date.getMonth() + 1).padStart(2, '0') + String(date.getDate()).padStart(2, '0') + String(date.getFullYear()).slice(-2);
+        const targetUrl = `https://bible.usccb.org/bible/readings/${dateCode}.cfm`;
         
-        // Get current date in YYYY-MM-DD format to match JSON keys
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const todayKey = `${year}-${month}-${day}`;
-
-        const loadingDiv = addMessage('model', `Loading readings for ${todayKey}...`);
-
+        const loadingDiv = addMessage('model', 'Fetching USCCB...');
         try {
-            // 1. Fetch the generated JSON file
-            const response = await fetch(./bible_readings.json);
-            if (!response.ok) throw new Error("Could not find bible_readings.json");
-            const calendarData = await response.json();
+            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
+            const data = await res.json();
+            const tempDiv = document.createElement("div");
+            tempDiv.innerHTML = data.contents;
+            const plainText = tempDiv.innerText || tempDiv.textContent;
 
-            // 2. Get data for today
-            const dayData = calendarData[todayKey];
-            if (!dayData) {
-                loadingDiv.innerText = `No readings found in JSON for ${todayKey}.`;
-                return;
-            }
+            const r1 = extractReading(plainText, "Reading 1") || "Not found";
+            const r2 = extractReading(plainText, "Reading 2") || "None";
+            const gospel = extractReading(plainText, "Gospel") || "Not found";
+            const verses = `Reading 1: ${r1}, Reading 2: ${r2}, Gospel: ${gospel}`;
 
-            const rawVerses = dayData.verses; // e.g., "Nm 6:22-27/Gal 4:4-7/Lk 2:16-21"
-            const parts = rawVerses.split('/');
-
-            let formattedVerses = "";
-
-            // 3. Logic: If only one "/", there are 2 parts (Reading 1 and Gospel)
-            // If there are two "/", there are 3 parts (Reading 1, Reading 2, Gospel)
-            if (parts.length === 2) {
-                formattedVerses = `Reading 1: ${parts[0].trim()}, Reading 2: None, Gospel: ${parts[1].trim()}`;
-            } else if (parts.length >= 3) {
-                formattedVerses = `Reading 1: ${parts[0].trim()}, Reading 2: ${parts[1].trim()}, Gospel: ${parts[2].trim()}`;
-            } else {
-                formattedVerses = `Readings: ${rawVerses}`;
-            }
-
-            // 4. Pass the formatted string to Gemini for analysis
-            const prompt = `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${formattedVerses}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section.`;
-            
-            await performAnalysis(key, prompt, loadingDiv);
-
-        } catch (e) {
-            console.error(e);
-            loadingDiv.innerText = "Error loading local Bible readings: " + e.message;
-        }
+            await performAnalysis(key, `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verses}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section.`, loadingDiv);
+        } catch (e) { loadingDiv.innerText = "Fetch failed."; }
     };
+
     window.sendMessage = async () => {
         const key = document.getElementById('apiKey').value;
         const text = document.getElementById('userInput').value.trim();
@@ -317,5 +290,3 @@
 </script>
 </body>
 </html>
-
-
