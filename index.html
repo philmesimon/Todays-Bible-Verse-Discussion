@@ -224,9 +224,9 @@
             // 3. Logic: If only one "/", there are 2 parts (Reading 1 and Gospel)
             // If there are two "/", there are 3 parts (Reading 1, Reading 2, Gospel)
             if (parts.length === 2) {
-                formattedVerses = `Reading 1: ${parts[0].strip()}, Reading 2: None, Gospel: ${parts[1].strip()}`;
+                formattedVerses = `Reading 1: ${parts[0].trim()}, Reading 2: None, Gospel: ${parts[1].trim()}`;
             } else if (parts.length >= 3) {
-                formattedVerses = `Reading 1: ${parts[0].strip()}, Reading 2: ${parts[1].strip()}, Gospel: ${parts[2].strip()}`;
+                formattedVerses = `Reading 1: ${parts[0].trim()}, Reading 2: ${parts[1].trim()}, Gospel: ${parts[2].trim()}`;
             } else {
                 formattedVerses = `Readings: ${rawVerses}`;
             }
@@ -317,4 +317,5 @@
 </script>
 </body>
 </html>
+
 
