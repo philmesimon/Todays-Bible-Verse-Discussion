@@ -53,7 +53,7 @@
     <h3>Settings</h3>
     <input type="password" id="apiKey" placeholder="Gemini API Key">
     <button onclick="saveKey()" style="width: 100%; margin-bottom: 10px;">💾 Save Key</button>
-    
+    <button onclick="showUserGuide()" style="width: 100%; background: #0288d1; margin-bottom: 10px;">📖 User Guide</button>
     <div class="save-load-area">
         <h4>Archive Session</h4>
         <input type="text" id="saveName" placeholder="Session Name (e.g. Lent Day 1)">
@@ -65,6 +65,16 @@
     <h3>Manual Verse Entry</h3>
     <textarea id="manualVerses" rows="2" placeholder="Enter verses manually..."></textarea>
     <button class="btn-manual" onclick="runManualStudy()">📖 Analyze Manual Verses</button>
+
+    <div class="instruction-box">
+        <strong>How to get a Key:</strong><br>
+        1. Go to <a href="https://aistudio.google.com/app/api-keys" target="_blank">AI Studio</a><br>
+        2. Click <b>Get API key</b><br>
+        3. <b>Create API key</b> -> Name it -> Select "Gemini API" -> <b>Create Key</b><br>
+        4. Copy and paste it above.
+    </div>
+
+
 </div>
 
 <div class="toolbar">
@@ -131,20 +141,65 @@
     let currentHistory = []; // Array of {role: "user"|"model", parts: [{text: ""}]}
 
     window.onload = () => {
-        const savedKey = localStorage.getItem('gemini_api_key');
-        if (savedKey) {
-            try { document.getElementById('apiKey').value = atob(savedKey); } 
-            catch (e) { document.getElementById('apiKey').value = savedKey; }
+        const saved = localStorage.getItem('gemini_api_key');
+        if (saved) {
+            try {
+                // atob (ASCII to Binary) decodes the scramble
+                document.getElementById('apiKey').value = atob(saved);
+            } catch (e) {
+                // Fallback: if it was saved before scrambling was added
+                document.getElementById('apiKey').value = saved;
+            }
         }
-        updateSavedList();
+    };
+
+
+    window.showUserGuide = () => {
+        // Close the menu first
+        document.getElementById('menuToggle').checked = false;
+        
+        // Clear the chat window for the guide
+        const chatWin = document.getElementById('chat-window');
+        chatWin.innerHTML = '';
+        
+        const guideText = `
+    # 📖 Catholic Bible Study - User Guide
+
+    ### 🚀 Getting Started
+    1. **API Key**: Enter your Google Gemini API Key in the side menu and click **Save**.
+    2. API keys is saved only in your device's local storage and is scrambled for basic obfuscation. You can clear it anytime by clearing the saved key in the menu.
+    4. Make sure to clear this if you are using a public/shared computer after your session.
+    3. **Today's Study**: Click the green **Today's Study** button to automatically fetch and analyze the USCCB Mass readings.
+
+    ### 🛠 Features
+    * **Automatic Fetching**: Uses a dual-proxy system to bypass CORS restrictions to access USCCB web pages and extract today's readings.
+    * **If one proxy fails, it automatically retries with another. If both fail, it will show an error message.
+    * **Manual Verse Analysis**: Paste any Bible verses in the manual input area and click the blue button to get theological questions and answers based on those verses.
+    * **Malayalam Analysis**: Gemini generates theological questions and answers in Malayalam.
+    * **Archive**: Save your favorite sessions to your browser's local storage in unique names for later review.
+    * **Interactive Chat**: Ask follow-up questions based on the current session's context. The agent remembers the flow of conversation and can refer back to previous verses and discussions.
+    * **Share**: Use the share button to share your study session via supported platforms or copy it to clipboard to share manually.
+
+
+    ### ⚠️ Troubleshooting
+    * **Fetch Failed**: If the first proxy fails, the app automatically retries with a second one. If both fail, check your internet connection.
+    * **Reading 2 is None**: On most weekdays, the liturgy only has one reading and a Gospel. This is normal behavior.
+        `;
+
+        // Use your existing addMessage function to display it
+        addMessage('model', guideText);
     };
 
     window.saveKey = () => {
         const rawKey = document.getElementById('apiKey').value;
-        if (rawKey) {
-            localStorage.setItem('gemini_api_key', btoa(rawKey));
-            alert("Key Saved.");
-        }
+        if (!rawKey) return alert("Please enter a key.");
+        
+        // btoa (Binary to ASCII) turns the key into a Base64 string
+        const scrambledKey = btoa(rawKey); 
+        
+        localStorage.setItem('gemini_api_key', scrambledKey);
+        alert("Key saved and scrambled successfully.");
+        document.getElementById('menuToggle').checked = false;
     };
 
     function extractReading(text, type) {
