@@ -187,22 +187,60 @@
         await performAnalysis(key, `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verses}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section.`, loadingDiv);
     };
 
+    // Helper function to handle proxy rotation and retries
+    async function fetchWithRetry(targetUrl) {
+        const proxies = [
+            (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+            (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`
+        ];
+
+        let lastError = null;
+
+        for (const proxyGenerator of proxies) {
+            const proxyUrl = proxyGenerator(targetUrl);
+            
+            // Try each proxy 2 times
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    console.log(`Attempt ${attempt} using proxy: ${proxyUrl}`);
+                    const res = await fetch(proxyUrl);
+                    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+                    
+                    const data = await res.json();
+                    // AllOrigins returns the content inside a 'contents' property
+                    // corsproxy.io usually returns the direct content, so we handle both
+                    return data.contents || data; 
+                } catch (e) {
+                    console.warn(`Attempt ${attempt} failed: ${e.message}`);
+                    lastError = e;
+                }
+            }
+        }
+        throw new Error(`All proxies failed after 4 total attempts. Last error: ${lastError.message}`);
+    }
+
     window.runUSCCBStudy = async () => {
-        // reset the current context for todays verses ---
-        currentHistory = []; // Wipes the LLM context
-        document.getElementById('chat-window').innerHTML = ''; // Clears the screen
-        // ---------------------------
+        // Reset the current context for today's verses
+        currentHistory = []; 
+        document.getElementById('chat-window').innerHTML = ''; 
+
         const key = document.getElementById('apiKey').value;
+        if (!key) return alert("Please enter your Gemini API Key.");
+
         const date = new Date();
-        const dateCode = String(date.getMonth() + 1).padStart(2, '0') + String(date.getDate()).padStart(2, '0') + String(date.getFullYear()).slice(-2);
-        const targetUrl = `https://bible.usccb.org/bible/readings/${dateCode}.cfm`;
+        const dateCode = String(date.getMonth() + 1).padStart(2, '0') + 
+                         String(date.getDate()).padStart(2, '0') + 
+                         String(date.getFullYear()).slice(-2);
         
-        const loadingDiv = addMessage('model', 'Fetching USCCB...');
+        const targetUrl = `https://bible.usccb.org/bible/readings/${dateCode}.cfm`;
+        const loadingDiv = addMessage('model', 'Fetching USCCB via proxy...');
+
         try {
-            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
-            const data = await res.json();
+            // Use our new retry logic
+            const contents = await fetchWithRetry(targetUrl);
+            
             const tempDiv = document.createElement("div");
-            tempDiv.innerHTML = data.contents;
+            tempDiv.innerHTML = contents;
             const plainText = tempDiv.innerText || tempDiv.textContent;
 
             const r1 = extractReading(plainText, "Reading 1") || "Not found";
@@ -211,7 +249,9 @@
             const verses = `Reading 1: ${r1}, Reading 2: ${r2}, Gospel: ${gospel}`;
 
             await performAnalysis(key, `Generate as many critical questions and detailed answers in Malayalam based on these verses: ${verses}. Use Bible/Catechism as authority. Print exact content of verses quoted and their questions and answers in a single section.`, loadingDiv);
-        } catch (e) { loadingDiv.innerText = "Fetch failed."; }
+        } catch (e) { 
+            loadingDiv.innerHTML = `<span style="color:red">Fetch failed: ${e.message}</span>`;
+        }
     };
 
     window.sendMessage = async () => {
